@@ -1,15 +1,71 @@
 const DB_NAME='generate-pa-db',DB_VERSION=1,STORE='documents';let db,currentDraft=null,deferredInstall;const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-const br=s=>esc(s||'-').replace(/\n/g,'<br>');const fmtDate=s=>{if(!s)return'-';const [y,m,d]=s.split('-');return `${d}-${m}-${y}`};
+const esc=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[c]));
+const br=s=>esc(s||'-').replace(/\n/g,'<br>');
+const fmtDate=s=>{if(!s)return'-';const [y,m,d]=String(s).split('-');return `${d}-${m}-${y}`};
 function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});r.onsuccess=()=>{db=r.result;ok(db)};r.onerror=()=>no(r.error)})}
-function os(mode='readonly'){return db.transaction(STORE,mode).objectStore(STORE)}function allDocs(){return new Promise((ok,no)=>{const r=os().getAll();r.onsuccess=()=>ok(r.result.sort((a,b)=>b.updatedAt-a.updatedAt));r.onerror=()=>no(r.error)})}function saveDoc(d){return new Promise((ok,no)=>{const r=os('readwrite').put(d);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}function deleteDoc(id){return new Promise((ok,no)=>{const r=os('readwrite').delete(id);r.onsuccess=ok;r.onerror=()=>no(r.error)})}
-function data(){return Object.fromEntries(new FormData($('#petitionForm')).entries())}function load(d){Object.entries(d||{}).forEach(([k,v])=>{const e=$('#petitionForm').elements[k];if(!e)return;if(e.length&&e[0].type==='radio')[...e].forEach(x=>x.checked=x.value===v);else e.value=v});labels()}
+function os(mode='readonly'){return db.transaction(STORE,mode).objectStore(STORE)}
+function allDocs(){return new Promise((ok,no)=>{const r=os().getAll();r.onsuccess=()=>ok(r.result.sort((a,b)=>b.updatedAt-a.updatedAt));r.onerror=()=>no(r.error)})}
+function saveDoc(d){return new Promise((ok,no)=>{const r=os('readwrite').put(d);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+function deleteDoc(id){return new Promise((ok,no)=>{const r=os('readwrite').delete(id);r.onsuccess=ok;r.onerror=()=>no(r.error)})}
+function data(){return Object.fromEntries(new FormData($('#petitionForm')).entries())}
+function load(d){Object.entries(d||{}).forEach(([k,v])=>{const e=$('#petitionForm').elements[k];if(!e)return;if(e.length&&e[0].type==='radio')[...e].forEach(x=>x.checked=x.value===v);else e.value=v});labels()}
 function labels(){const t=$('input[name=type]:checked').value;$('.partyLabel').textContent=t==='gugat'?'Penggugat':'Pemohon';$('.opponentLabel').textContent=t==='gugat'?'Tergugat':'Termohon'}
-function row(label,value,bold=false){return `<tr><td class="label">${label}</td><td class="colon">:</td><td class="value">${bold?'<strong>':''}${value||'-'}${bold?'</strong>':''}</td></tr>`}
-function children(d){return br(d.children||'-')}
-function generate(d){const talak=d.type==='talak',A=talak?'Pemohon':'Penggugat',B=talak?'Termohon':'Tergugat',a=esc(d.plaintiffName),b=esc(d.defendantName),city=esc(d.city),court=esc(d.court||'Pengadilan Agama');const intro=talak?'Perkenankan saya yang bertandatangan di bawah ini :':'Yang bertandatangan di bawah ini :';const role=talak?'mengajukan Cerai Talak terhadap istri saya':'mengajukan cerai gugat terhadap suami saya';const numbered=[`Bahwa, ${A} dan ${B} adalah suami isteri sah${d.marriageDate?`, menikah pada tanggal ${fmtDate(d.marriageDate)}`:''}${d.marriageNumber?`, tercatat pada Kantor Urusan Agama dengan Kutipan akta nikah Nomor: ${esc(d.marriageNumber)}`:''} ;`,`Bahwa, setelah menikah ${A} dengan ${B} tinggal bersama ${br(d.residence||'-')} sampai kemudian berpisah ;`,`Bahwa, selama pernikahan tersebut ${A} dengan ${B} telah berhubungan sebagaimana layaknya suami isteri (Ba’da al-dukhul) dan ${d.children?`dikaruniai anak: ${children(d)}`:'belum dikaruniai anak'} ;`,`Bahwa, rumah tangga ${A} dan ${B} awalnya rukun dan harmonis, namun kemudian terjadi perselisihan dan pertengkaran yang disebabkan oleh ${br(d.conflictCause||'-')} ;`,`Bahwa, puncak pertengkaran terakhir antara ${A} dan ${B} terjadi sebagai berikut: ${br(d.separation||'-')} ;`,`Bahwa, sekarang antara ${A} dan ${B} telah berpisah rumah. ${br(d.reconciliation||'-')} ;`,`Bahwa, selama berpisah rumah tidak ada usaha keluarga untuk merukunkan ${A} dengan ${B} ;`,`Bahwa, atas dasar uraian tersebut ${talak?'permohonan cerai talak':'gugatan cerai'} telah memenuhi alasan perceraian sebagaimana diatur dalam Undang-Undang No. 1 Tahun 1974 jo. PP No. 9 Tahun 1975 Pasal 19 jo. KHI Pasal 116 huruf (f) ;`,`Bahwa, ${A} telah berusaha bersabar, namun keadaan tidak pernah menjadi baik dan perceraian adalah jalan terbaik yang harus ditempuh ;`,`Bahwa, dengan keadaan rumah tangga ${A} dan ${B} yang demikian, sudah tidak mungkin lagi dipertahankan ;`];let posita=numbered.map((x,i)=>`<li>${x}</li>`).join('');let petitum=talak?`<li>Menerima dan mengabulkan permohonan Pemohon ;</li><li>Memberi izin kepada Pemohon (${a}) untuk menjatuhkan talak satu raj’i terhadap Termohon (${b}) di depan sidang Pengadilan Agama ${city} ;</li>`:`<li>Menerima dan mengabulkan gugatan Penggugat ;</li><li>Menjatuhkan talak satu ba’in sughra Tergugat (${b}) terhadap Penggugat (${a}) ;</li>`;if(d.requests)petitum+=`<li>${br(d.requests)} ;</li>`;petitum+='<li>Membebankan biaya perkara sesuai dengan hukum yang berlaku ;</li>';
-return `<div class="word-document"><div class="letter-head"><span>Perihal : ${talak?'Permohonan Cerai Talak':'Cerai Gugat'}</span><span>${city}, ${fmtDate(d.letterDate)}</span></div><div class="recipient">Kepada :<br>Yth. Ketua ${court}<br>di -<br>${city}</div><p>Assalamu’alaikum wr. wb.</p><p>${intro}</p><table class="party-table"><tbody>${row('Nama',a,true)}${row('NIK',esc(d.plaintiffNik))}${row('Tempat dan Tanggal Lahir / Umur',esc(d.plaintiffBirth))}${row('Agama',esc(d.plaintiffReligion||'Islam'))}${row('Warga Negara','Indonesia')}${row('Pendidikan / Pekerjaan',esc(d.plaintiffJob))}${row('Alamat',br(d.plaintiffAddress))}${d.plaintiffPhone?row('Nomor Handphone',esc(d.plaintiffPhone)):''}</tbody></table><p>Selanjutnya disebut sebagai <strong>${A}</strong>.</p><p>Dengan ini ${role} :</p><table class="party-table"><tbody>${row('Nama',b,true)}${row('NIK',esc(d.defendantNik))}${row('Tempat dan Tanggal Lahir / Umur',esc(d.defendantBirth))}${row('Agama',esc(d.defendantReligion||'Islam'))}${row('Warga Negara','Indonesia')}${row('Pendidikan / Pekerjaan',esc(d.defendantJob))}${row('Alamat',br(d.defendantAddress))}</tbody></table><p>Selanjutnya disebut sebagai <strong>${B}</strong>.</p><p>Adapun dasar diajukan ${talak?'permohonan':'gugatan'} ini adalah sebagai berikut :</p><ol class="posita">${posita}</ol><p class="indent">Bahwa, berdasarkan alasan-alasan tersebut di atas maka ${A} mohon kepada Bapak Ketua Pengadilan Agama ${city} melalui Majelis Hakim yang memeriksa perkara ini kiranya berkenan menerima, memeriksa, mengadili serta memutuskan perkara ini dengan amar putusan sebagai berikut :</p><p class="section-label">Primer :</p><ol class="petitum">${petitum}</ol><p class="section-label">Subsider :</p><p>Apabila Majelis Hakim berpendapat lain, mohon putusannya seadil-adilnya ;</p><p>Demikian dibuat ${talak?'Permohonan':'surat Gugatan'} ini dengan sebenarnya, atas terkabulnya diucapkan terimakasih. Wassalamualaikum Warohmatullahi Wabarakatuh,</p><div class="signature"><div>Hormat ${A},</div><div class="signature-space"></div><strong>${a}</strong></div></div>`}
-function text(){const x=document.createElement('div');x.innerHTML=currentDraft.html;return x.innerText}function download(name,content,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function row(label,value,plain=false){return `<tr><td class="label">${esc(label)}</td><td class="colon">:</td><td class="value">${plain?esc(value):value||'-'}</td></tr>`}
+function generate(d){const talak=d.type==='talak';const A=talak?'Pemohon':'Penggugat';const B=talak?'Termohon':'Tergugat';const a=esc(d.plaintiffName||'-');const b=esc(d.defendantName||'-');const city=esc(d.city||'-');const court=esc(d.court||'Pengadilan Agama');const dateText=fmtDate(d.letterDate);const matter=talak?'permohonan cerai talak':'gugatan cerai';const roleText=talak?'permohonan cerai talak terhadap istri saya':'gugatan cerai terhadap suami saya';const base = [`Bahwa para pihak adalah suami isteri yang sah${d.marriageDate?`, menikah pada tanggal ${fmtDate(d.marriageDate)}`:''}${d.marriageNumber?`, tercatat pada akta nikah Nomor: ${esc(d.marriageNumber)}`:''}.`,`Bahwa sejak menikah sampai saat ini para pihak telah tinggal bersama dan menjalani kehidupan rumah tangga. ${br(d.residence||'-')}` ,`Bahwa selama perkawinan para pihak ${d.children?`telah lahir dan membesarkan anak: ${br(d.children||'-')}`:'belum dikaruniai anak.'}` ,`Bahwa dalam perjalanan rumah tangga terjadi perselisihan dan pertengkaran yang disebabkan oleh ${br(d.conflictCause||'-')}.` ,`Bahwa puncak perselisihan dan keadaan berpisah rumah terjadi pada ${br(d.separation||'-')}.` ,`Bahwa sejak saat itu para pihak tidak lagi hidup rukun dan tidak ada kemungkinan untuk disatukan kembali. ${br(d.reconciliation||'-')}` ,`Bahwa alasan-alasan tersebut di atas telah memenuhi ketentuan hukum mengenai alasan perceraian sebagaimana diatur dalam Undang-Undang No. 1 Tahun 1974 jo. Peraturan Pemerintah No. 9 Tahun 1975 Pasal 19 dan KHI Pasal 116 huruf (f).`];let posita='';base.forEach((item,index)=>{posita += `<li>${item}</li>`;});let petitum=`<li>Menerima dan mengabulkan ${talak?'permohonan Pemohon':'gugatan Penggugat'}.</li><li>${talak?'Memberi izin kepada Pemohon untuk menjatuhkan talak satu raj’i terhadap Termohon di hadapan sidang Pengadilan Agama '+city+'.':'Menjatuhkan talak satu ba’in sughra Tergugat terhadap Penggugat.'}</li>`;if(d.requests){petitum += `<li>${br(d.requests)}.</li>`;}petitum += `<li>Membebankan biaya perkara sesuai ketentuan hukum yang berlaku.</li>`;return `
+<div class="word-document">
+  <div class="letter-head">
+    <div class="head-left">Perihal : ${talak?'Permohonan Cerai Talak':'Gugatan Cerai'}</div>
+    <div class="head-right">${city}, ${dateText}</div>
+  </div>
+  <div class="recipient">Kepada Yth.<br>Ketua ${court}<br>di -<br>${city}</div>
+  <p class="greeting">Assalamu’alaikum Wr. Wb.</p>
+  <p>Yang bertanda tangan di bawah ini:</p>
+  <table class="party-table">
+    <tbody>
+      ${row('Nama',`<strong>${a}</strong>`,true)}
+      ${row('NIK',d.plaintiffNik?esc(d.plaintiffNik):'-')}
+      ${row('Tempat dan Tanggal Lahir / Umur',d.plaintiffBirth?esc(d.plaintiffBirth):'-')}
+      ${row('Agama',d.plaintiffReligion?esc(d.plaintiffReligion):'Islam')}
+      ${row('Warga Negara','Indonesia')}
+      ${row('Pendidikan / Pekerjaan',d.plaintiffJob?esc(d.plaintiffJob):'-')}
+      ${row('Alamat',br(d.plaintiffAddress||'-'))}
+      ${d.plaintiffPhone?row('Nomor Handphone',esc(d.plaintiffPhone)) : ''}
+    </tbody>
+  </table>
+  <p>Selanjutnya disebut sebagai <strong>${A}</strong>.</p>
+  <p>Dengan ini mengajukan ${roleText}:</p>
+  <table class="party-table">
+    <tbody>
+      ${row('Nama',`<strong>${b}</strong>`,true)}
+      ${row('NIK',d.defendantNik?esc(d.defendantNik):'-')}
+      ${row('Tempat dan Tanggal Lahir / Umur',d.defendantBirth?esc(d.defendantBirth):'-')}
+      ${row('Agama',d.defendantReligion?esc(d.defendantReligion):'Islam')}
+      ${row('Warga Negara','Indonesia')}
+      ${row('Pendidikan / Pekerjaan',d.defendantJob?esc(d.defendantJob):'-')}
+      ${row('Alamat',br(d.defendantAddress||'-'))}
+      ${d.defendantPhone?row('Nomor Handphone',esc(d.defendantPhone)) : ''}
+    </tbody>
+  </table>
+  <p>Selanjutnya disebut sebagai <strong>${B}</strong>.</p>
+  <p>Adapun dasar ${matter} ini adalah sebagai berikut:</p>
+  <ol class="posita">${posita}</ol>
+  <p class="justify">Bahwa berdasarkan uraian tersebut di atas, ${A} menegaskan bahwa keadaan rumah tangga ${A} dan ${B} sudah tidak lagi dapat dipertahankan dan tidak ada kemungkinan untuk hidup rukun kembali. Oleh karena itu, ${A} mohon agar Majelis Hakim yang memeriksa dan mengadili perkara ini menerima, mengabulkan, dan memutuskan perkara ini dengan amar putusan sebagai berikut:</p>
+  <p class="mini-heading">Primer :</p>
+  <ol class="petitum">${petitum}</ol>
+  <p class="mini-heading">Subsider :</p>
+  <p>Apabila Majelis Hakim berpendapat lain, mohon putusan yang seadil-adilnya.</p>
+  <p>Demikian ${matter} ini dibuat dengan sebenarnya. Atas perhatian dan terkabulnya, diucapkan terima kasih. Wassalamu’alaikum Wr. Wb.</p>
+  <div class="signature-block">
+    <div>${city}, ${dateText}</div>
+    <div>Hormat ${A},</div>
+    <div class="signature-space"></div>
+    <div><strong>${a}</strong></div>
+  </div>
+</div>
+`;
+}
+function text(){const x=document.createElement('div');x.innerHTML=currentDraft.html;return x.innerText}
+function download(name,content,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 async function render(){const d=data();if(!d.plaintiffName&&!d.defendantName)return;currentDraft={...(currentDraft||{}),data:d,updatedAt:Date.now(),title:`${d.type==='talak'?'Cerai Talak':'Cerai Gugat'} — ${d.plaintiffName||'Tanpa nama'}`,html:generate(d)};$('#preview').className='paper';$('#preview').innerHTML=currentDraft.html;$('#printBtn').disabled=$('#exportTxtBtn').disabled=false;await saveDoc(currentDraft);$('#saveHint').textContent='Tersimpan di perangkat • '+new Date().toLocaleTimeString('id-ID');refreshDocs()}
 async function refreshDocs(){const ds=await allDocs();$('#docCount').textContent=ds.length;$('#documentList').innerHTML=ds.length?ds.map(d=>`<div class="doc-row"><div><h3>${esc(d.title)}</h3><small>${new Date(d.updatedAt).toLocaleString('id-ID')}</small></div><div class="doc-actions"><button class="ghost openDoc" data-id="${d.id}">Buka</button><button class="danger delDoc" data-id="${d.id}">Hapus</button></div></div>`).join(''):'<div class="empty-state" style="padding:50px">Belum ada dokumen tersimpan.</div>'}
 function view(v){$$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$$('.view').forEach(x=>x.classList.toggle('active',x.id===v+'View'))}
